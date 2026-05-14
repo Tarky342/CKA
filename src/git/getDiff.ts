@@ -7,3 +7,4 @@ export function getDiff(): string {
 
 // test change: add a comment to create an uncommitted diff for testing
 // (この行はテスト後に元に戻してください)
+// test change 2: second line to create an uncommitted change

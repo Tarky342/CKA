@@ -1,0 +1,162 @@
+import * as fs from "fs/promises"
+import * as path from "path"
+
+export interface AnalyzeOptions {
+  outputDir?: string
+  projectName?: string
+}
+
+async function walk(dir: string, ignore: Set<string>): Promise<string[]> {
+  const entries = await fs.readdir(dir, { withFileTypes: true })
+  let files: string[] = []
+  for (const e of entries) {
+    const full = path.join(dir, e.name)
+    if (ignore.has(e.name)) continue
+    if (e.isDirectory()) {
+      files = files.concat(await walk(full, ignore))
+    } else {
+      files.push(full)
+    }
+  }
+  return files
+}
+
+function formatTimestamp(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  const hh = String(date.getHours()).padStart(2, "0")
+  const mm = String(date.getMinutes()).padStart(2, "0")
+  const ss = String(date.getSeconds()).padStart(2, "0")
+  return `${y}-${m}-${d} ${hh}:${mm}:${ss}`
+}
+
+export async function analyzeProject(options: AnalyzeOptions = {}): Promise<string> {
+  const originalCwd = process.cwd()
+  const outputDir = options.outputDir || "output"
+
+  // Determine target directory to analyze. If options.projectName is a path
+  // (absolute or relative and exists) use that directory as the analysis root.
+  let targetDir = originalCwd
+  if (options.projectName) {
+    const candidate = path.isAbsolute(options.projectName)
+      ? options.projectName
+      : path.resolve(originalCwd, options.projectName)
+    try {
+      const st = await fs.stat(candidate)
+      if (st.isDirectory()) {
+        targetDir = candidate
+      }
+    } catch (e) {
+      // ignore - fallback to originalCwd
+    }
+  }
+
+  // Derive a project name for display and file naming. If user passed a
+  // non-path projectName (like a custom name), keep it; otherwise use the
+  // basename of the target directory.
+  const rawProjectName = options.projectName && !path.isAbsolute(options.projectName)
+    ? options.projectName
+    : path.basename(targetDir)
+
+  // Make a file-safe project name for use in filenames (replace characters
+  // not allowed in filenames on Windows/Unix).
+  const fileSafeProjectName = String(rawProjectName || "project").replace(/[:\\\/\s<>:\"|?*]/g, "_")
+
+  const ignore = new Set(["node_modules", "dist", ".git"])
+  const allFiles = await walk(targetDir, ignore)
+
+  // Filter out files outside project (like files in parent if symlinked)
+  const relativeFiles = allFiles
+    .filter(f => f.startsWith(targetDir))
+    .map(f => path.relative(targetDir, f))
+
+  const byExt: Record<string, { count: number; lines: number }> = {}
+  const todos: { file: string; line: number; text: string }[] = []
+  const sizes: { file: string; bytes: number }[] = []
+
+  for (const rel of relativeFiles) {
+    const abs = path.join(targetDir, rel)
+    try {
+      const stat = await fs.stat(abs)
+      sizes.push({ file: rel, bytes: stat.size })
+      const ext = path.extname(rel) || "<no_ext>"
+      if (!byExt[ext]) byExt[ext] = { count: 0, lines: 0 }
+      byExt[ext].count += 1
+      if (stat.size > 0 && stat.isFile()) {
+        const content = await fs.readFile(abs, "utf-8")
+        const lineCount = content.split(/\r?\n/).length
+        byExt[ext].lines += lineCount
+        const lines = content.split(/\r?\n/)
+        for (let i = 0; i < lines.length; i++) {
+          const l = lines[i]
+          if (/TODO|FIXME|BUG/.test(l)) {
+            todos.push({ file: rel, line: i + 1, text: l.trim() })
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  sizes.sort((a, b) => b.bytes - a.bytes)
+  const topFiles = sizes.slice(0, 10)
+
+  const totalFiles = relativeFiles.length
+  const totalLines = Object.values(byExt).reduce((s, v) => s + v.lines, 0)
+
+  // Attempt to read package.json from the target directory
+  let pkg: any = null
+  try {
+    const pkgText = await fs.readFile(path.join(targetDir, "package.json"), "utf-8")
+    pkg = JSON.parse(pkgText)
+  } catch (e) {
+    // ignore
+  }
+
+  const now = new Date()
+  const timestamp = formatTimestamp(now)
+
+  let md = `# ${rawProjectName} - プロジェクト解析レポート\n\n`
+  md += `**生成日時**: ${timestamp}\n\n---\n\n`
+  md += `## 概要\n\n- ファイル数: ${totalFiles}\n- 総行数（推定）: ${totalLines}\n- 拡張子別ファイル数/行数:\n\n`
+
+  for (const ext of Object.keys(byExt).sort()) {
+    md += `  - ${ext}: ${byExt[ext].count} files, ${byExt[ext].lines} lines\n`
+  }
+
+  md += `\n## 大きいファイル（上位10）\n\n`
+  for (const f of topFiles) {
+    md += `- ${f.file} — ${f.bytes} bytes\n`
+  }
+
+  md += `\n## TODO / FIXME 抽出（上限50件）\n\n`
+  for (const t of todos.slice(0, 50)) {
+    md += `- ${t.file}#L${t.line}: ${t.text}\n`
+  }
+
+  if (pkg) {
+    md += `\n## package.json 情報\n\n`
+    md += `- name: ${pkg.name || "-"}\n`
+    md += `- version: ${pkg.version || "-"}\n`
+    if (pkg.dependencies) {
+      md += `- dependencies:\n`
+      for (const k of Object.keys(pkg.dependencies)) {
+        md += `  - ${k}: ${pkg.dependencies[k]}\n`
+      }
+    }
+  }
+
+  md += `\n---\n\nGenerated by analyzeProject.ts`
+
+  const fileName = `${fileSafeProjectName}_analysis_${new Date().toISOString().replace(/[:.]/g, "_")}.md`
+  const outputDirResolved = path.resolve(originalCwd, outputDir)
+  await fs.mkdir(outputDirResolved, { recursive: true })
+  const filePath = path.join(outputDirResolved, fileName)
+  await fs.writeFile(filePath, md, "utf-8")
+
+  return filePath
+}
+
+export {}

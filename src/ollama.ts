@@ -17,7 +17,7 @@ export async function generate(prompt: string): Promise<string> {
     throw new Error(`Ollama API Error: ${response.status}`)
   }
 
-  const data = await response.json()
+  const data = await response.json() as any
 
   return data.response
 }

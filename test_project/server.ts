@@ -1,6 +1,6 @@
-import http from "http"
-import fs from "fs"
-import path from "path"
+import * as http from "http"
+import * as fs from "fs"
+import * as path from "path"
 import { getDiff } from "../src/git/getDiff"
 
 const PORT = Number(process.env.PORT || 3000)

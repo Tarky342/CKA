@@ -40,7 +40,7 @@ function summarizeDiff(diff) {
   return { text: textLines.join('\n'), files: fileSummaries }
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   try {
     const url = req.url || '/'
     if (url === '/' || url === '/index.html') {
@@ -63,6 +63,12 @@ const server = http.createServer((req, res) => {
       const summary = summarizeDiff(diff)
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
       res.end(JSON.stringify(summary, null, 2))
+      return
+    }
+
+    if (url === '/report') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ status: 'report generation requires ollama', available: '/summary, /raw' }))
       return
     }
 
