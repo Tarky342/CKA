@@ -1,0 +1,19 @@
+{
+  "name": "code-knowledge-agent",
+  "version": "0.1.0",
+  "description": "Code analysis and knowledge extraction agent",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "build": "tsc",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3"
+  }
+}
