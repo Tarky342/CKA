@@ -1,7 +1,9 @@
 import { execSync } from "child_process"
+import * as path from "path"
 
-export function getDiff(): string {
-  const diff = execSync("git diff", { encoding: "utf-8" })
+export function getDiff(projectDir?: string): string {
+  const cwd = projectDir ? path.resolve(projectDir) : undefined
+  const diff = execSync("git diff", { encoding: "utf-8", cwd })
   return diff
 }
 

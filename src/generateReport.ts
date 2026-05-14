@@ -5,7 +5,7 @@ import { buildSummaryPrompt, buildReportTemplate } from "./prompt.js"
 import { getDiff } from "./git/getDiff.js"
 
 export interface ReportOptions {
-  projectName?: string
+  projectDir?: string
   outputDir?: string
 }
 
@@ -26,10 +26,11 @@ function formatTimestamp(date: Date): string {
 }
 
 export async function generateDiffReport(options: ReportOptions = {}): Promise<string> {
-  const projectName = options.projectName || getProjectName()
+  const projectDir = options.projectDir
+  const projectName = projectDir ? path.basename(path.resolve(projectDir)) : getProjectName()
   const outputDir = options.outputDir || "output"
 
-  const diff = getDiff()
+  const diff = getDiff(projectDir)
   if (!diff.trim()) {
     console.log("No uncommitted changes found.")
     return ""

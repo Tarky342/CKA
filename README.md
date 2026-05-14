@@ -110,7 +110,7 @@ npm run build
 ### コマンド形式
 
 ```bash
-node dist/main.js <command> [projectName] [outputDir]
+node dist/main.js <command> [projectDir] [outputDir]
 ```
 
 ### コマンド一覧
@@ -119,34 +119,34 @@ node dist/main.js <command> [projectName] [outputDir]
 
 ```bash
 # CLI直接実行
-node dist/main.js diff yoshida_zemi
+node dist/main.js diff /path/to/project
 
 # npm スクリプト
-npm run diff yoshida_zemi
+npm run diff /path/to/project
 ```
 
-**出力**: `output/yoshida_zemi_YYYYMMDD_hhmmss.md`
+**出力**: `output/{projectName}_{YYYYMMDD_hhmmss}.md`
 
 #### 2. 全体解析のみ
 
 ```bash
 # CLI直接実行
-node dist/main.js analyze yoshida_zemi
+node dist/main.js analyze /path/to/project
 
 # npm スクリプト
-npm run analyze yoshida_zemi
+npm run analyze /path/to/project
 ```
 
-**出力**: `output/yoshida_zemi_analysis_YYYY-MM-DDTHH_MM_SS_sssZ.md`
+**出力**: `output/{projectName}_analysis_YYYY-MM-DDTHH_MM_SS_sssZ.md`
 
 #### 3. 両方実行
 
 ```bash
 # CLI直接実行
-node dist/main.js both yoshida_zemi
+node dist/main.js both /path/to/project
 
 # npm スクリプト
-npm run both yoshida_zemi
+npm run both /path/to/project
 ```
 
 **出力**: 差分レポート + 全体解析レポート（2ファイル）
@@ -160,14 +160,14 @@ npm run both yoshida_zemi
 
 ```bash
 # 自動実行（Step 0～4）
-node dist/main.js analyze-ms yoshida_zemi
+node dist/main.js analyze-ms /path/to/project
 
 # 個別ステップ実行
-node dist/main.js step0 yoshida_zemi  # AST構造解析
-node dist/main.js step1 yoshida_zemi  # ファイルスキャン
-node dist/main.js step2 yoshida_zemi  # TODO抽出
-node dist/main.js step3 yoshida_zemi  # メタデータ抽出
-node dist/main.js step4 yoshida_zemi  # レポート生成
+node dist/main.js step0 /path/to/project  # AST構造解析
+node dist/main.js step1 /path/to/project  # ファイルスキャン
+node dist/main.js step2 /path/to/project  # TODO抽出
+node dist/main.js step3 /path/to/project  # メタデータ抽出
+node dist/main.js step4 /path/to/project  # レポート生成
 ```
 
 ### パイプライン構造
@@ -224,15 +224,15 @@ npm run help
 
 ```bash
 # 基本的な使用
-node dist/main.js diff my_project
-node dist/main.js analyze my_project
-node dist/main.js both my_project
+node dist/main.js diff ./my_project
+node dist/main.js analyze /path/to/project
+node dist/main.js both /full/path/to/project
 
 # 出力先を指定
-node dist/main.js diff my_project /tmp/reports
+node dist/main.js diff ./my_project /tmp/reports
 
 # 両方実行して reports フォルダに保存
-node dist/main.js both my_project reports
+node dist/main.js both ./my_project reports
 ```
 
 ## 必要な環境
@@ -307,9 +307,9 @@ npm run build
 ### 開発モードで実行
 
 ```bash
-npm run dev diff "プロジェクト名"
-npm run dev analyze "プロジェクト名"
-npm run dev both "プロジェクト名"
+npm run dev diff /path/to/project
+npm run dev analyze /path/to/project
+npm run dev both /path/to/project
 ```
 
 ## テスト

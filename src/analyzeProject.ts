@@ -3,7 +3,7 @@ import * as path from "path"
 
 export interface AnalyzeOptions {
   outputDir?: string
-  projectName?: string
+  projectDir?: string
 }
 
 async function walk(dir: string, ignore: Set<string>): Promise<string[]> {
@@ -35,13 +35,13 @@ export async function analyzeProject(options: AnalyzeOptions = {}): Promise<stri
   const originalCwd = process.cwd()
   const outputDir = options.outputDir || "output"
 
-  // Determine target directory to analyze. If options.projectName is a path
+  // Determine target directory to analyze. If options.projectDir is a path
   // (absolute or relative and exists) use that directory as the analysis root.
   let targetDir = originalCwd
-  if (options.projectName) {
-    const candidate = path.isAbsolute(options.projectName)
-      ? options.projectName
-      : path.resolve(originalCwd, options.projectName)
+  if (options.projectDir) {
+    const candidate = path.isAbsolute(options.projectDir)
+      ? options.projectDir
+      : path.resolve(originalCwd, options.projectDir)
     try {
       const st = await fs.stat(candidate)
       if (st.isDirectory()) {
@@ -53,10 +53,10 @@ export async function analyzeProject(options: AnalyzeOptions = {}): Promise<stri
   }
 
   // Derive a project name for display and file naming. If user passed a
-  // non-path projectName (like a custom name), keep it; otherwise use the
+  // non-path projectDir (like a custom name), keep it; otherwise use the
   // basename of the target directory.
-  const rawProjectName = options.projectName && !path.isAbsolute(options.projectName)
-    ? options.projectName
+  const rawProjectName = options.projectDir && !path.isAbsolute(options.projectDir)
+    ? options.projectDir
     : path.basename(targetDir)
 
   // Make a file-safe project name for use in filenames (replace characters
