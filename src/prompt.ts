@@ -19,10 +19,11 @@ ${content}
 `
 }
 
-export function buildReportTemplate(projectName: string, timestamp: string, diffSummary: string): string {
+export function buildReportTemplate(projectName: string, timestamp: string, diffSummary: string, modelName?: string): string {
   return `# ${projectName} - 変更報告書
 
 **生成日時**: ${timestamp}
+${modelName ? `\n**使用モデル**: ${modelName}` : ""}
 
 ---
 

@@ -3,10 +3,69 @@ import { analyzeProject } from "./analyzeProject.js"
 import { analyzeProjectFull, analyzeStep1_Scan, analyzeStep2_ExtractTodos, analyzeStep3_ExtractMetadata, analyzeStep4_GenerateReport } from "./analyzeProjectMultiStep.js"
 import { analyzeStep0_AST } from "./analyzeAST.js"
 
+interface CliOptions {
+  command: string
+  projectDir?: string
+  outputDir?: string
+  model?: string
+}
+
+function parseCliArgs(argv: string[]): CliOptions {
+  const [command, ...rest] = argv
+  const positional: string[] = []
+  let projectDir: string | undefined
+  let outputDir: string | undefined
+  let model: string | undefined
+
+  for (let i = 0; i < rest.length; i += 1) {
+    const current = rest[i]
+
+    if (current === "--model" || current === "-m") {
+      model = rest[i + 1]
+      i += 1
+      continue
+    }
+
+    if (current === "--outputDir" || current === "--output-dir" || current === "-o") {
+      outputDir = rest[i + 1]
+      i += 1
+      continue
+    }
+
+    if (current === "--projectDir" || current === "--project-dir" || current === "-p") {
+      projectDir = rest[i + 1]
+      i += 1
+      continue
+    }
+
+    positional.push(current)
+  }
+
+  if (positional.length > 0 && !projectDir) {
+    projectDir = positional[0]
+  }
+
+  if (positional.length > 1 && !outputDir) {
+    outputDir = positional[1]
+  }
+
+  if (positional.length > 2 && !model) {
+    model = positional[2]
+  }
+
+  return {
+    command,
+    projectDir,
+    outputDir,
+    model
+  }
+}
+
 function showHelp() {
   console.log(`
 使用方法:
-  node dist/main.js <command> [projectDir] [outputDir]
+  node dist/main.js <command> [projectDir] [outputDir] [model]
+  node dist/main.js <command> [projectDir] --model <model>
 
 【基本コマンド】
   diff       - 差分解析のみ（未コミット変更をレポート）
@@ -29,6 +88,7 @@ function showHelp() {
 
 実行例:
   node dist/main.js diff /path/to/project
+  node dist/main.js diff /path/to/project --model qwen2.5-coder:7b
   node dist/main.js analyze /path/to/project
   node dist/main.js analyze-ms /path/to/project           # マルチステップ版
   node dist/main.js both ./my_project
@@ -51,19 +111,15 @@ async function main() {
     return
   }
 
-  const command = argv[0]
-  const projectDir = argv[1]
-  const outputDir = argv[2] || "output"
+  const parsed = parseCliArgs(argv)
+  const command = parsed.command
+  const projectDir = parsed.projectDir
+  const outputDir = parsed.outputDir || "output"
+  const model = parsed.model
 
   const validCommands = ["diff", "analyze", "both", "analyze-ms", "both-ms", "step0", "step1", "step2", "step3", "step4"]
   
   if (!validCommands.includes(command)) {
-  // ステップ個別実行
-  if (command === "step0") {
-    await analyzeStep0_AST(projectDir, outputDir)
-    return
-  }
-
     console.error(`❌ 不正なコマンド: ${command}`)
     console.error(`使用可能: ${validCommands.join(", ")}, help`)
     showHelp()
@@ -79,7 +135,7 @@ async function main() {
   // 基本コマンド
   if (command === "diff") {
     console.log(`📊 差分解析を実行中...`)
-    const reportPath = await generateDiffReport({ projectDir, outputDir })
+    const reportPath = await generateDiffReport({ projectDir, outputDir, model })
     if (reportPath) {
       console.log(`✅ 差分レポート保存: ${reportPath}`)
     }
@@ -95,7 +151,7 @@ async function main() {
 
   if (command === "both") {
     console.log(`📊 差分解析を実行中...`)
-    const reportPath = await generateDiffReport({ projectDir, outputDir })
+    const reportPath = await generateDiffReport({ projectDir, outputDir, model })
     if (reportPath) {
       console.log(`✅ 差分レポート保存: ${reportPath}`)
     }
@@ -114,12 +170,17 @@ async function main() {
 
   if (command === "both-ms") {
     console.log(`📊 差分解析を実行中...`)
-    const reportPath = await generateDiffReport({ projectDir, outputDir })
+    const reportPath = await generateDiffReport({ projectDir, outputDir, model })
     if (reportPath) {
       console.log(`✅ 差分レポート保存: ${reportPath}`)
     }
     const analyzeReportPath = await analyzeProjectFull(outputDir, projectDir)
     console.log(`✅ マルチステップ解析完了: ${analyzeReportPath}`)
+    return
+  }
+
+  if (command === "step0") {
+    await analyzeStep0_AST(projectDir!, outputDir)
     return
   }
 

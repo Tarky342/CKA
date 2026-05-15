@@ -1,12 +1,13 @@
 import * as fs from "fs/promises"
 import * as path from "path"
-import { generate } from "./ollama.js"
+import { generate, resolveModel } from "./ollama.js"
 import { buildSummaryPrompt, buildReportTemplate } from "./prompt.js"
 import { getDiff } from "./git/getDiff.js"
 
 export interface ReportOptions {
   projectDir?: string
   outputDir?: string
+  model?: string
 }
 
 function getProjectName(): string {
@@ -38,13 +39,15 @@ export async function generateDiffReport(options: ReportOptions = {}): Promise<s
 
   console.log("Generating report from diff...")
   const prompt = buildSummaryPrompt(diff)
-  const diffSummary = await generate(prompt)
+  const model = await resolveModel(options.model)
+  console.log(`Using Ollama model: ${model}`)
+  const diffSummary = await generate(prompt, model)
 
   const now = new Date()
   const timestamp = now.toISOString()
   const timeLabel = formatTimestamp(now)
 
-  const report = buildReportTemplate(projectName, timestamp, diffSummary)
+  const report = buildReportTemplate(projectName, timestamp, diffSummary, model)
 
   await fs.mkdir(outputDir, { recursive: true })
 

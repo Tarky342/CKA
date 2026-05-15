@@ -110,7 +110,7 @@ npm run build
 ### コマンド形式
 
 ```bash
-node dist/main.js <command> [projectDir] [outputDir]
+node dist/main.js <command> [projectDir] [outputDir] [model]
 ```
 
 ### コマンド一覧
@@ -120,12 +120,16 @@ node dist/main.js <command> [projectDir] [outputDir]
 ```bash
 # CLI直接実行
 node dist/main.js diff /path/to/project
+node dist/main.js diff /path/to/project output qwen2.5-coder:7b
+node dist/main.js diff /path/to/project --model qwen2.5-coder:7b
 
 # npm スクリプト
 npm run diff /path/to/project
 ```
 
 **出力**: `output/{projectName}_{YYYYMMDD_hhmmss}.md`
+
+**未コミットの変更がない場合**: `No uncommitted changes found.`
 
 #### 2. 全体解析のみ
 
@@ -219,6 +223,7 @@ npm run help
 
 - `projectName` - プロジェクト名（デフォルト: カレントディレクトリ名）
 - `outputDir` - 出力ディレクトリ（デフォルト: `output`）
+- `model` - Ollama のモデル名。未指定時はインストール済みモデルを自動選択し、複数ある場合は対話的に選択します。
 
 ### 使用例
 
@@ -329,6 +334,7 @@ curl http://localhost:3000/summary
 
 ## 注意点
 
+- Ollama が未インストール、またはモデルが未追加の場合は案内メッセージを表示します
 - ollama サーバーが停止していると実行できません
 - 差分が大きい場合、ollama の応答が遅くなる可能性があります
 - 生成されたレポートはあくまで AI による分析なので、正確性は保証されません
@@ -348,3 +354,4 @@ MIT
 - [ ] CI/CD パイプラインへの統合
 - [ ] 複数プロジェクトの一括解析
 - [ ] カスタム解析ルールの定義機能
+
