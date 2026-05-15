@@ -1,6 +1,11 @@
-import * as fs from "fs/promises";
+import * as fs from 'node:fs/promises';
 import * as path from "path";
 import { execSync } from "child_process";
+import * as ts from "typescript";
+import { fileURLToPath } from 'url';
+
+// Replace __dirname with the following
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function walkDir(dir: string, ignore: Set<string>): Promise<string[]> {
   const files: string[] = [];
@@ -102,7 +107,7 @@ async function extractAST(filePath: string): Promise<ASTResult | null> {
 
         // パラメータ抽出
         const paramMatch = line.match(/\(([^)]*)\)/);
-        const params = paramMatch ? paramMatch[1].split(",").map((p) => p.trim()) : [];
+        const params = paramMatch ? paramMatch[1].split(",").map((p: string) => p.trim()) : [];
 
         // 戻り値型抽出 (TypeScript)
         const returnTypeMatch = line.match(/\):\s*([^{=;]+)/);
@@ -158,7 +163,7 @@ async function extractAST(filePath: string): Promise<ASTResult | null> {
         const importMatch = line.match(/import\s+(?:{([^}]+)}|(\w+))\s+from\s+['"]([^'"]+)['"]/);
         if (importMatch) {
           const items = importMatch[1]
-            ? importMatch[1].split(",").map((item) => item.trim())
+            ? importMatch[1].split(",").map((item: string) => item.trim())
             : [importMatch[2] || "default"];
           const module = importMatch[3];
           imports.push({ module, items, line: i + 1 });
@@ -285,3 +290,60 @@ export async function analyzeStep0_AST(
     console.error("❌ Step 0 失敗:", err);
   }
 }
+
+/**
+ * Analyze a TypeScript project and generate structured knowledge in JSONL format.
+ */
+async function analyzeProject(projectPath: string, outputPath: string) {
+  const program = ts.createProgram([projectPath], {});
+  const checker = program.getTypeChecker();
+
+  const knowledgeUnits: any[] = [];
+
+  for (const sourceFile of program.getSourceFiles()) {
+    if (!sourceFile.isDeclarationFile) {
+      ts.forEachChild(sourceFile, node => {
+        const knowledgeUnit = extractKnowledgeUnit(node, checker);
+        if (knowledgeUnit) {
+          knowledgeUnits.push(knowledgeUnit);
+        }
+      });
+    }
+  }
+
+  // Write knowledge units to JSONL file (async)
+  const jsonlContent = knowledgeUnits.map(unit => JSON.stringify(unit)).join('\n');
+  await fs.writeFile(outputPath, jsonlContent, 'utf-8');
+  console.log(`Knowledge units written to ${outputPath}`);
+}
+
+/**
+ * Extract a knowledge unit from a TypeScript node.
+ */
+function extractKnowledgeUnit(node: ts.Node, checker: ts.TypeChecker): any | null {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+        const symbol = checker.getSymbolAtLocation(node.name);
+        const type = checker.getTypeAtLocation(node);
+
+        return {
+            type: 'Function',
+            name: node.name.text,
+            returnType: checker.typeToString(type.getCallSignatures()[0]?.getReturnType()),
+            parameters: node.parameters.map(param => param.getText()),
+            documentation: ts.displayPartsToString(symbol?.getDocumentationComment(checker))
+        };
+    }
+
+    // Add more cases for other node types as needed
+    return null;
+}
+
+// Example usage
+const projectPath = path.resolve(__dirname, '../test_project/server.ts');
+const outputPath = path.resolve(__dirname, '../output/knowledge.jsonl');
+analyzeProject(projectPath, outputPath).catch(() => {});
+
+// Example usage for portfolio-nfc-main
+const portfolioProjectPath = path.resolve(__dirname, '../../../portfolio-nfc-main');
+const portfolioOutputPath = path.resolve(__dirname, '../output/portfolio_knowledge.jsonl');
+analyzeProject(portfolioProjectPath, portfolioOutputPath).catch(() => {});

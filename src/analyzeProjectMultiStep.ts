@@ -110,6 +110,35 @@ function formatTimestamp(date: Date): string {
   return `${y}${m}${d}_${hh}${mm}${ss}`
 }
 
+function sanitizeProjectName(name: string): string {
+  if (!name) return "project"
+  // avoid '.' and path separators
+  const base = name === "." ? path.basename(process.cwd()) : name
+  return String(base).replace(/[\\/\\s:.]+/g, "_").replace(/[^a-zA-Z0-9_\-]/g, "_")
+}
+
+async function findCacheFile(cacheDir: string, projName: string, kind: string): Promise<string | null> {
+  const preferred = path.join(cacheDir, `${projName}_${kind}.json`)
+  try {
+    await fs.stat(preferred)
+    return preferred
+  } catch (e) {
+    // continue
+  }
+  try {
+    const files = await fs.readdir(cacheDir)
+    for (const f of files) {
+      const lf = f.toLowerCase()
+      if (lf.includes(kind.toLowerCase()) && lf.endsWith('.json')) {
+        return path.join(cacheDir, f)
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return null
+}
+
 async function walk(dir: string, ignore: Set<string>): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true })
   let files: string[] = []
@@ -545,7 +574,7 @@ export async function analyzeStep1_Scan(
   projectName?: string
 ): Promise<string> {
   const cwd = process.cwd()
-  const projName = projectName || path.basename(cwd)
+  const projName = sanitizeProjectName(projectName || path.basename(cwd))
   const cacheDir = await getCacheDir(outputDir)
   const cacheFile = path.join(cacheDir, `${projName}_scan.json`)
 
@@ -580,7 +609,7 @@ export async function analyzeStep2_ExtractTodos(
   projectName?: string
 ): Promise<string> {
   const cwd = process.cwd()
-  const projName = projectName || path.basename(cwd)
+  const projName = sanitizeProjectName(projectName || path.basename(cwd))
   const cacheDir = await getCacheDir(outputDir)
   const todoFile = path.join(cacheDir, `${projName}_todos.json`)
 
@@ -624,7 +653,7 @@ export async function analyzeStep3_ExtractMetadata(
   projectName?: string
 ): Promise<string> {
   const cwd = process.cwd()
-  const projName = projectName || path.basename(cwd)
+  const projName = sanitizeProjectName(projectName || path.basename(cwd))
   const cacheDir = await getCacheDir(outputDir)
   const metaFile = path.join(cacheDir, `${projName}_metadata.json`)
 
@@ -666,20 +695,54 @@ export async function analyzeStep4_GenerateReport(
   projectName?: string
 ): Promise<string> {
   const cwd = process.cwd()
-  const projName = projectName || path.basename(cwd)
+  const projName = sanitizeProjectName(projectName || path.basename(cwd))
   const cacheDir = await getCacheDir(outputDir)
 
   console.log(`[Step 4] 最終レポート生成中...`)
 
-  const scanFile = path.join(cacheDir, `${projName}_scan.json`)
-  const todoFile = path.join(cacheDir, `${projName}_todos.json`)
-  const metaFile = path.join(cacheDir, `${projName}_metadata.json`)
-  const astFile = path.join(cacheDir, `${projName}_ast.json`)
+  let scanFile = path.join(cacheDir, `${projName}_scan.json`)
+  let todoFile = path.join(cacheDir, `${projName}_todos.json`)
+  let metaFile = path.join(cacheDir, `${projName}_metadata.json`)
+  let astFile = path.join(cacheDir, `${projName}_ast.json`)
 
-  const scanData = (await readJsonFile(scanFile)) || {}
-  const todos = (await readJsonFile(todoFile)) || []
-  const metadata = (await readJsonFile(metaFile)) || {}
-  const astData = (await readJsonFile(astFile)) || {}
+  let scanData = (await readJsonFile(scanFile)) || {}
+  let todos = (await readJsonFile(todoFile)) || []
+  let metadata = (await readJsonFile(metaFile)) || {}
+  let astData = (await readJsonFile(astFile)) || {}
+
+  // Fallback: try to locate cache files by kind if named differently
+  if (!Array.isArray(scanData.files) || scanData.files.length === 0) {
+    const f = await findCacheFile(cacheDir, projName, "scan")
+    if (f) {
+      scanFile = f
+      scanData = (await readJsonFile(scanFile)) || {}
+      console.log(`ℹ️ fallback: loaded scan cache ${scanFile}`)
+    }
+  }
+  if (!Array.isArray(todos) || todos.length === 0) {
+    const f = await findCacheFile(cacheDir, projName, "todos")
+    if (f) {
+      todoFile = f
+      todos = (await readJsonFile(todoFile)) || []
+      console.log(`ℹ️ fallback: loaded todos cache ${todoFile}`)
+    }
+  }
+  if (!metadata || Object.keys(metadata).length === 0) {
+    const f = await findCacheFile(cacheDir, projName, "metadata")
+    if (f) {
+      metaFile = f
+      metadata = (await readJsonFile(metaFile)) || {}
+      console.log(`ℹ️ fallback: loaded metadata cache ${metaFile}`)
+    }
+  }
+  if (!astData || Object.keys(astData).length === 0) {
+    const f = await findCacheFile(cacheDir, projName, "ast")
+    if (f) {
+      astFile = f
+      astData = (await readJsonFile(astFile)) || {}
+      console.log(`ℹ️ fallback: loaded ast cache ${astFile}`)
+    }
+  }
   const relativeFiles = Array.isArray(scanData.files)
     ? scanData.files.map((file: any) => String(file.path || "")).filter(Boolean)
     : []
@@ -778,6 +841,205 @@ export async function analyzeStep4_GenerateReport(
   const researchFindings: ResearchFinding[] = []
   for (const item of researchPlan) {
     researchFindings.push(await inspectSourceFiles(cwd, item.sourceFiles, item.focus))
+  }
+
+  // --- facts JSONL 出力 (責務別 JSONL)
+  try {
+    const factsDir = path.join(outputDir, "facts")
+    await fs.mkdir(factsDir, { recursive: true })
+
+    // filesystem.jsonl
+    const fsPath = path.join(factsDir, "filesystem.jsonl")
+    const fsLines: string[] = []
+    if (Array.isArray(scanData.files)) {
+      for (const f of scanData.files) {
+        const item = {
+          id: `file:${f.path}`,
+          type: "file",
+          project: projName,
+          file: f.path,
+          createdAt: timestamp,
+          data: {
+            ext: f.ext,
+            size: f.size,
+            lines: f.lines,
+            modifiedTime: f.modifiedTime,
+            encoding: f.encoding,
+          },
+        }
+        fsLines.push(JSON.stringify(item))
+      }
+    }
+    await fs.writeFile(fsPath, fsLines.join("\n") + (fsLines.length ? "\n" : ""), "utf-8")
+
+    // symbols.jsonl (from AST)
+    const symPath = path.join(factsDir, "symbols.jsonl")
+    const symLines: string[] = []
+    if (Array.isArray(astData.files)) {
+      for (const f of astData.files) {
+        const fileKey = f.file || ""
+        if (Array.isArray(f.functions)) {
+          for (const fn of f.functions) {
+            const item = {
+              id: `symbol:${fileKey}:${fn.name}`,
+              type: "function",
+              project: projName,
+              file: fileKey,
+              startLine: fn.line || 0,
+              endLine: fn.line || 0,
+              createdAt: timestamp,
+              data: {
+                name: fn.name,
+                params: fn.params || [],
+                returnType: fn.returnType || null,
+                async: fn.isAsync || false,
+                export: fn.isExport || false,
+              },
+            }
+            symLines.push(JSON.stringify(item))
+          }
+        }
+        if (Array.isArray(f.classes)) {
+          for (const c of f.classes) {
+            const item = {
+              id: `symbol:${fileKey}:${c.name}`,
+              type: "class",
+              project: projName,
+              file: fileKey,
+              startLine: c.line || 0,
+              createdAt: timestamp,
+              data: {
+                name: c.name,
+                methods: c.methods || [],
+                export: c.isExport || false,
+              },
+            }
+            symLines.push(JSON.stringify(item))
+          }
+        }
+      }
+    }
+    await fs.writeFile(symPath, symLines.join("\n") + (symLines.length ? "\n" : ""), "utf-8")
+
+    // imports.jsonl
+    const impPath = path.join(factsDir, "imports.jsonl")
+    const impLines: string[] = []
+    if (Array.isArray(astData.files)) {
+      for (const f of astData.files) {
+        if (Array.isArray(f.imports)) {
+          for (const imp of f.imports) {
+            const item = {
+              id: `import:${f.file}:${imp.module}:${imp.line || 0}`,
+              type: "import",
+              project: projName,
+              file: f.file,
+              createdAt: timestamp,
+              data: {
+                module: imp.module,
+                items: imp.items || [],
+                line: imp.line || 0,
+              },
+            }
+            impLines.push(JSON.stringify(item))
+          }
+        }
+      }
+    }
+    await fs.writeFile(impPath, impLines.join("\n") + (impLines.length ? "\n" : ""), "utf-8")
+
+    // calls.jsonl
+    const callsPath = path.join(factsDir, "calls.jsonl")
+    const callLines: string[] = []
+    if (Array.isArray(astData.files)) {
+      for (const f of astData.files) {
+        if (Array.isArray(f.callGraph)) {
+          for (const cg of f.callGraph) {
+            const item = {
+              id: `call:${f.file}:${cg.caller}`,
+              type: "call",
+              project: projName,
+              file: f.file,
+              createdAt: timestamp,
+              data: {
+                caller: `${f.file}#${cg.caller}`,
+                callees: cg.callees || [],
+              },
+            }
+            callLines.push(JSON.stringify(item))
+          }
+        }
+      }
+    }
+    await fs.writeFile(callsPath, callLines.join("\n") + (callLines.length ? "\n" : ""), "utf-8")
+
+    // patterns.jsonl (basic signals from research findings)
+    const patPath = path.join(factsDir, "patterns.jsonl")
+    const patLines: string[] = []
+    for (const rf of researchFindings) {
+      const item = {
+        id: `pattern:${rf.title.replace(/\s+/g, "_")}`,
+        type: "pattern",
+        project: projName,
+        createdAt: timestamp,
+        data: {
+          category: rf.title,
+          signal: rf.evidence?.[0] || null,
+          confidence: Math.min(0.95, Math.max(0.2, (rf.evidence?.length || 0) / 10)),
+          files: rf.sourceFiles || [],
+        },
+      }
+      patLines.push(JSON.stringify(item))
+    }
+    await fs.writeFile(patPath, patLines.join("\n") + (patLines.length ? "\n" : ""), "utf-8")
+
+    // metrics.jsonl
+    const metricsPath = path.join(factsDir, "metrics.jsonl")
+    const metricsLines: string[] = []
+    const globalMetric = {
+      id: `metric:project_summary:${projName}`,
+      type: "project_metric",
+      project: projName,
+      createdAt: timestamp,
+      data: {
+        totalFiles: scanData.totalFiles || 0,
+        totalLines: scanData.totalLines || 0,
+        topFiles: scanData.topFiles || [],
+      },
+    }
+    metricsLines.push(JSON.stringify(globalMetric))
+    if (Array.isArray(scanData.files)) {
+      for (const f of scanData.files) {
+        metricsLines.push(JSON.stringify({
+          id: `metric:file:${f.path}`,
+          type: "file_metric",
+          project: projName,
+          file: f.path,
+          createdAt: timestamp,
+          data: { lines: f.lines, size: f.size },
+        }))
+      }
+    }
+    await fs.writeFile(metricsPath, metricsLines.join("\n") + (metricsLines.length ? "\n" : ""), "utf-8")
+
+    // todos.jsonl
+    const todosPath = path.join(factsDir, "todos.jsonl")
+    const todoLines: string[] = []
+    for (const t of todos) {
+      todoLines.push(JSON.stringify({
+        id: `todo:${t.file}:${t.line}`,
+        type: "todo",
+        project: projName,
+        file: t.file,
+        line: t.line,
+        text: t.text,
+        createdAt: timestamp,
+      }))
+    }
+    await fs.writeFile(todosPath, todoLines.join("\n") + (todoLines.length ? "\n" : ""), "utf-8")
+
+    console.log(`✅ facts JSONL を出力: ${factsDir}`)
+  } catch (e) {
+    console.warn(`⚠️ facts 出力に失敗: ${String(e)}`)
   }
 
   md += `\n## Phase 8 - 追加調査結果\n\n`
