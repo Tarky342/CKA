@@ -281,6 +281,43 @@ ollama serve
 - 検出された TODO/FIXME
 - package.json の情報
 
+### Facts (JSONL)
+
+解析パイプラインは構造化された facts を `output/facts/*.jsonl` に出力します。各ファイルは JSON Lines 形式で、目的別に分かれています。主なファイル:
+
+- `filesystem.jsonl`: ファイルごとのメタ情報（path, ext, lines, size）
+- `symbols.jsonl`: 関数・クラス等のシンボル情報（id, name, file, startLine）
+- `imports.jsonl`: モジュールの import 情報（module, items, line）
+- `calls.jsonl`: 呼び出し関係（caller, callees）
+- `patterns.jsonl`: 検出したパターン/シグナル（例: TODO 検出）
+- `metrics.jsonl`: プロジェクト/ファイル単位のメトリクス
+- `todos.jsonl`: 抽出された TODO/FIXME の一覧
+
+これらは将来的に埋め込みや類似度検索に用いる想定で分離されています。簡易的にサーバで読み出して QA に使うことができます。
+
+### ローカル QA サーバー（簡易）
+
+解析結果を使ってローカルで簡易的な QA を行うためのサーバーを追加しました。
+
+- 起動:
+
+```bash
+npm run serve-qa
+```
+
+- デフォルト: `http://localhost:3333`
+
+- 主要エンドポイント:
+  - `GET /health` — サーバと facts 読み込み状況を確認
+  - `GET /search?q=...` — facts 内を簡易全文検索して上位を返す
+  - `POST /qa` — JSON ボディ `{ "question": "..." }` を受け取り、検索結果をコンテキストに Ollama へ問い合わせて回答を返す
+  - `POST /reload` — `output/facts` を再読み込み
+
+- 環境変数:
+  - `OLLAMA_MODEL` — 使用する Ollama モデル名を指定（例: `qwen2.5-coder:1.5b`）。指定がない場合は既定値を使用します。
+
+このサーバーは簡易実装です。検索を埋め込みベースの類似度検索に置き換えることで QA の精度が向上します。
+
 ## ファイル構成
 
 ```
@@ -349,9 +386,33 @@ MIT
 
 ## 今後の拡張予定
 
-- [ ] Web UI でレポート履歴を表示
-- [ ] Slack/Discord への自動通知
-- [ ] CI/CD パイプラインへの統合
-- [ ] 複数プロジェクトの一括解析
-- [ ] カスタム解析ルールの定義機能
+
+
+
+## GitHub への公開（ブランチ方針）
+
+このリポジトリを GitHub に公開する際は、直接 `main` に push せず、新しい機能ブランチを作成してプルリクエストでレビューするワークフローを推奨します。
+
+推奨ブランチ名の例: `exposing-cka-as-api`（今回以降はこちらをメインの開発ブランチとして扱ってください）
+
+簡単な手順:
+
+```bash
+# ローカルブランチ作成
+git checkout -b exposing-cka-as-api
+
+# 変更をコミット
+git add .
+git commit -m "Add .gitignore and README updates: branch policy"
+
+# リモートへプッシュ（origin が設定済みの場合）
+git push -u origin exposing-cka-as-api
+```
+
+リモートのデフォルトブランチを変更するには GitHub のリポジトリ設定 → `Branches` から `exposing-cka-as-api` をデフォルトブランチに設定してください。CI や保護ルールが必要な場合は同画面で設定できます。
+
+理由: 直接 `main` を更新せずブランチ運用することで、レビュー・CI・品質管理の流れが確立され、安全に公開できます。
+
+
+
 

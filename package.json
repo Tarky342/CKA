@@ -16,12 +16,15 @@
     "step2": "node dist/main.js step2",
     "step3": "node dist/main.js step3",
     "step4": "node dist/main.js step4",
-    "help": "node dist/main.js help"
+    "help": "node dist/main.js help",
+    "serve-qa": "tsx src/qaServer.ts"
   },
   "dependencies": {
+    "express": "^4.18.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/express": "^4.17.25",
     "@types/node": "^22.15.17",
     "tsx": "^4.19.2",
     "typescript": "^5.8.3"
